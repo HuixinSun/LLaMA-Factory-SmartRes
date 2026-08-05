@@ -1,0 +1,179 @@
+Metadata-Version: 2.4
+Name: llamafactory
+Version: 0.9.4.dev0
+Summary: Unified Efficient Fine-Tuning of 100+ LLMs
+Home-page: https://github.com/hiyouga/LLaMA-Factory
+Author: hiyouga
+Author-email: hiyouga@buaa.edu.cn
+License: Apache 2.0 License
+Keywords: AI,LLM,GPT,ChatGPT,Llama,Transformer,DeepSeek,Pytorch
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.9.0
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: transformers!=4.52.0,<=4.52.4,>=4.49.0; sys_platform != "darwin"
+Requires-Dist: transformers!=4.52.0,<=4.51.3,>=4.49.0; sys_platform == "darwin"
+Requires-Dist: datasets<=3.6.0,>=2.16.0
+Requires-Dist: accelerate<=1.7.0,>=1.3.0
+Requires-Dist: peft<=0.15.2,>=0.14.0
+Requires-Dist: trl<=0.9.6,>=0.8.6
+Requires-Dist: tokenizers<=0.21.1,>=0.19.0
+Requires-Dist: gradio<=5.31.0,>=4.38.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: tyro<0.9.0
+Requires-Dist: einops
+Requires-Dist: numpy<2.0.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: scipy
+Requires-Dist: sentencepiece
+Requires-Dist: tiktoken
+Requires-Dist: modelscope>=1.14.0
+Requires-Dist: hf-transfer
+Requires-Dist: fire
+Requires-Dist: omegaconf
+Requires-Dist: packaging
+Requires-Dist: protobuf
+Requires-Dist: pyyaml
+Requires-Dist: pydantic<=2.10.6
+Requires-Dist: uvicorn
+Requires-Dist: fastapi
+Requires-Dist: sse-starlette
+Requires-Dist: av
+Requires-Dist: librosa
+Provides-Extra: torch
+Requires-Dist: torch>=2.0.0; extra == "torch"
+Requires-Dist: torchvision>=0.15.0; extra == "torch"
+Provides-Extra: torch-npu
+Requires-Dist: torch-npu==2.5.1; extra == "torch-npu"
+Requires-Dist: torchvision==0.20.1; extra == "torch-npu"
+Requires-Dist: decorator; extra == "torch-npu"
+Provides-Extra: metrics
+Requires-Dist: nltk; extra == "metrics"
+Requires-Dist: jieba; extra == "metrics"
+Requires-Dist: rouge-chinese; extra == "metrics"
+Provides-Extra: deepspeed
+Requires-Dist: deepspeed<=0.16.9,>=0.10.0; extra == "deepspeed"
+Provides-Extra: liger-kernel
+Requires-Dist: liger-kernel>=0.5.5; extra == "liger-kernel"
+Provides-Extra: bitsandbytes
+Requires-Dist: bitsandbytes>=0.39.0; extra == "bitsandbytes"
+Provides-Extra: hqq
+Requires-Dist: hqq; extra == "hqq"
+Provides-Extra: eetq
+Requires-Dist: eetq; extra == "eetq"
+Provides-Extra: gptq
+Requires-Dist: optimum>=1.24.0; extra == "gptq"
+Requires-Dist: gptqmodel>=2.0.0; extra == "gptq"
+Provides-Extra: aqlm
+Requires-Dist: aqlm[gpu]>=1.1.0; extra == "aqlm"
+Provides-Extra: vllm
+Requires-Dist: vllm<=0.9.1,>=0.4.3; extra == "vllm"
+Provides-Extra: sglang
+Requires-Dist: sglang[srt]>=0.4.5; extra == "sglang"
+Requires-Dist: transformers==4.51.1; extra == "sglang"
+Provides-Extra: galore
+Requires-Dist: galore-torch; extra == "galore"
+Provides-Extra: apollo
+Requires-Dist: apollo-torch; extra == "apollo"
+Provides-Extra: badam
+Requires-Dist: badam>=1.2.1; extra == "badam"
+Provides-Extra: adam-mini
+Requires-Dist: adam-mini; extra == "adam-mini"
+Provides-Extra: minicpm-v
+Requires-Dist: soundfile; extra == "minicpm-v"
+Requires-Dist: torchvision; extra == "minicpm-v"
+Requires-Dist: torchaudio; extra == "minicpm-v"
+Requires-Dist: vector_quantize_pytorch; extra == "minicpm-v"
+Requires-Dist: vocos; extra == "minicpm-v"
+Requires-Dist: msgpack; extra == "minicpm-v"
+Requires-Dist: referencing; extra == "minicpm-v"
+Requires-Dist: jsonschema_specifications; extra == "minicpm-v"
+Provides-Extra: openmind
+Requires-Dist: openmind; extra == "openmind"
+Provides-Extra: swanlab
+Requires-Dist: swanlab; extra == "swanlab"
+Provides-Extra: dev
+Requires-Dist: pre-commit; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: build; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: license-file
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Multi-Scale Token System (MTS)
+
+Adaptive resolution processing for vision-language models with text-guided supervision.
+
+## Modified Files
+
+### Core Processing
+- `custom_models/qwen2_5_vl/multiscale_processor.py`
+  - `MultiScaleTokenProcessor`: Main processor with text-guided visual projection
+  - `TextGuidedVisualProjector`: CLIP-based text-visual alignment
+  - Confidence mask generation from bounding boxes
+  - Auxiliary BCE loss for training
+
+- `custom_models/qwen2_5_vl/multiscale_image_processor.py`
+  - Multi-scale image preprocessing
+  - Tracks original image size and resize ratios
+
+### Model Integration
+- `custom_models/qwen2_5_vl/modeling_qwen2_5_vl.py`
+  - Passes `text_prompt`, `bbox_scale_xy`, `instruction` through forward chain
+  - Combines MTS auxiliary loss with main loss
+
+### Data & Training
+- `src/llamafactory/data/collator.py`
+  - Extracts `instruction` from input_ids
+  - Computes `bbox_scale_xy` from image processor
+
+- `src/llamafactory/model/patcher.py`
+  - Monkey-patches visual forward to inject MTS parameters
+  - Initializes MTS processor with config
+
+- `src/llamafactory/model/loader.py`
+  - Freezes CLIP text encoder after LoRA initialization
+
+## Key Parameters
+
+- `high_res_scale`: Resolution multiplier for high-res processing (default: 2.0)
+- `base_resolution`: Base image resolution (default: 224)
+- `text_prompt`: Optional text guidance for visual attention
+- `bbox_scale_xy`: Bounding box scaling factors (sy, sx)
+- `instruction`: Full instruction text for context
+
+## Usage
+
+```yaml
+use_multi_scale: true
+scale_layer: 1  # Use Layer 1 features for scale prediction
+conf_thresh: 0.5
+scale_thresh: 0.6
+base_resolution: 112  # Base processing resolution (short side)
+high_res_scale: 0.2   # HR scale factor: HR resolution = base_resolution * high_res_scale = 224
+```
+
+Dataset JSON should include bounding boxes in `bbox` field.
+
