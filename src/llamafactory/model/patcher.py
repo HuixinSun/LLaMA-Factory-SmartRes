@@ -251,10 +251,14 @@ def patch_qwen25vl_multiscale_vision(model: "PreTrainedModel", model_args: "Mode
             tau=getattr(model_args, "conf_thresh", 0.5),
             router_layer=getattr(model_args, "scale_layer", 30),
             encode_snap=os.environ.get("MTS_SPARSE_SNAP", "window"),
+            lambda_route=getattr(model_args, "lambda_route", 1.0),
+            lambda_hinge=getattr(model_args, "lambda_hinge", 5.0),
         )
         print(f"[INFO] SmartRes (released package) tau={getattr(model_args, 'conf_thresh', 0.5)} "
               f"router_layer={getattr(model_args, 'scale_layer', 30)} "
-              f"encode_snap={os.environ.get('MTS_SPARSE_SNAP', 'window')}")
+              f"encode_snap={os.environ.get('MTS_SPARSE_SNAP', 'window')} "
+              f"lambda_route={getattr(model_args, 'lambda_route', 1.0)} "
+              f"lambda_hinge={getattr(model_args, 'lambda_hinge', 5.0)}")
         return
 
     if _token_order in ("revised_dense_vec", "dense_vec", "v5"):
