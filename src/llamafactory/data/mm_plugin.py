@@ -164,25 +164,21 @@ class MMPluginMixin:
         use_multi_scale = getattr(processor, "use_multi_scale", False)
         
         if use_multi_scale:
-            from custom_models.qwen2_5_vl.multiscale_image_processor import MultiScaleImageProcessor  # type: ignore
-            if not isinstance(image_processor, MultiScaleImageProcessor):
+            # patch_processor() already installed it; a worker that missed that needs its own.
+            from smartres.qwen25vl import DualResolutionImageProcessor
+
+            if not isinstance(image_processor, DualResolutionImageProcessor):
                 ip = image_processor
-                # Borrow key params from the existing image processor
-                kwargs = {
-                    "patch_size": getattr(ip, "patch_size", 14),
-                    "temporal_patch_size": getattr(ip, "temporal_patch_size", 2),
-                    "merge_size": getattr(ip, "merge_size", 2),
-                    "min_pixels": getattr(ip, "min_pixels", None),
-                    "max_pixels": getattr(ip, "max_pixels", None),
-                    # Get multi-scale config from processor if available (set during model loading in patcher.py)
-                    "use_multi_scale": True,
-                    "base_resolution": getattr(ip, "base_resolution", getattr(processor, "base_resolution", 224)),
-                    "high_res_scale": getattr(ip, "high_res_scale", getattr(processor, "high_res_scale", 2.0)),
-                }
-                ms_ip = MultiScaleImageProcessor(**kwargs)
-                setattr(processor, "image_processor", ms_ip)
-                image_processor = ms_ip
-                
+                image_processor = DualResolutionImageProcessor(
+                    patch_size=getattr(ip, "patch_size", 14),
+                    temporal_patch_size=getattr(ip, "temporal_patch_size", 2),
+                    merge_size=getattr(ip, "merge_size", 2),
+                    min_pixels=getattr(ip, "min_pixels", None),
+                    max_pixels=getattr(ip, "max_pixels", None),
+                    hr_scale=getattr(processor, "high_res_scale", 0.2),
+                )
+                setattr(processor, "image_processor", image_processor)
+
         video_processor: BaseImageProcessor = getattr(
             processor, "video_processor", getattr(processor, "image_processor", None)
         )
