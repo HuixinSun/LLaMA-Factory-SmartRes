@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-sys.path.insert(0, '/mnt/rdata4_6/huixin/LLaMA-Factory-main')
-
 import os
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
@@ -173,12 +170,8 @@ def load_model(
                 # FastV baseline: prunes vision tokens INSIDE the LLM at layer k, so the
                 # vision tower still runs at full resolution. Mutually exclusive with MTS.
                 logger.info_rank0("Loading FastV model for Qwen2.5-VL...")
-                _fastv_dir = os.path.abspath(
-                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../custom_models/qwen2_5_vl_fastv")
-                )
-                if _fastv_dir not in sys.path:
-                    sys.path.insert(0, _fastv_dir)
-                from modeling_qwen2_5_vl_fastv import Qwen2_5_VLForConditionalGeneration as _FastVQwen25VL
+                # The FastV baseline ships in the SmartRes repo, not in this fork.
+                from comparisons.fastv import Qwen2_5_VLForConditionalGeneration as _FastVQwen25VL
 
                 logger.info_rank0(f"  FastV model path: {_fastv_dir}")
                 if model_args.train_from_scratch:
@@ -186,19 +179,6 @@ def load_model(
                 else:
                     model = _FastVQwen25VL.from_pretrained(**init_kwargs)
                 logger.info_rank0("FastV model loaded successfully")
-            elif model_type in ("qwen2_5_vl", "qwen2_vl"):
-                try:
-                    from custom_models.qwen2_5_vl.modeling_qwen2_5_vl_fast import (
-                        Qwen2_5_VLForConditionalGeneration as _CustomQwen25VL,
-                    )
-                    if model_args.train_from_scratch:
-                        model = _CustomQwen25VL.from_config(config)
-                    else:
-                        model = _CustomQwen25VL.from_pretrained(**init_kwargs)
-                except Exception as e:
-                    logger.warning_rank0(
-                        f"Falling back to HF AutoModel for {model_type} due to custom import error: {e}"
-                    )
             if model is None:
                 if type(config) in AutoModelForVision2Seq._model_mapping.keys():  # image-text
                     load_class = AutoModelForVision2Seq

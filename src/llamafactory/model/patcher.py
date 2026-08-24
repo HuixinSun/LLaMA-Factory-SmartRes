@@ -92,57 +92,27 @@ def patch_processor(
     setattr(processor, "use_audio_in_video", model_args.use_audio_in_video)
     setattr(processor, "audio_sampling_rate", model_args.audio_sampling_rate)
 
-    # Swap in our MultiScaleImageProcessor so base_resolution + pixel_frames are used
-    # First check if the existing processor is already a MultiScaleImageProcessor
-    import sys
-    custom_models_path = '/mnt/rdata4_6/huixin/LLaMA-Factory-main/custom_models'
-    if custom_models_path not in sys.path:
-        sys.path.insert(0, custom_models_path)
-    from qwen2_5_vl.multiscale_image_processor import MultiScaleImageProcessor  # type: ignore
-    
-    old_ip = getattr(processor, 'image_processor', None)
-    is_already_multiscale = isinstance(old_ip, MultiScaleImageProcessor)
-    use_multi_scale_flag = getattr(model_args, 'use_multi_scale', False)
-    
-    # Set use_multi_scale on processor so mm_plugin.py can read it
-    setattr(processor, 'use_multi_scale', use_multi_scale_flag)
-    
-    # Also store other multi-scale config on processor for mm_plugin.py to use if needed
-    if use_multi_scale_flag:
-        setattr(processor, 'base_resolution', getattr(model_args, 'base_resolution', 224))
-        setattr(processor, 'high_res_scale', getattr(model_args, 'high_res_scale', 2.0))
-    
-    # If use_multi_scale is False but processor is already MultiScaleImageProcessor,
-    # we need to update its use_multi_scale attribute
-    if not use_multi_scale_flag and is_already_multiscale:
-        setattr(old_ip, 'use_multi_scale', False)
-        print(f"[INFO] Disabled multi-scale processing for existing MultiScaleImageProcessor")
-    
-    # Only create/swap MultiScaleImageProcessor if use_multi_scale is True
-    elif use_multi_scale_flag:
-        kwargs = {
-            'patch_size': getattr(old_ip, 'patch_size', getattr(model_args, 'patch_size', 14)),
-            'temporal_patch_size': getattr(old_ip, 'temporal_patch_size', getattr(model_args, 'temporal_patch_size', 2)),
-            'merge_size': getattr(old_ip, 'merge_size', getattr(model_args, 'spatial_merge_size', 2)),
-            'min_pixels': getattr(old_ip, 'min_pixels', getattr(model_args, 'image_min_pixels', None)),
-            'max_pixels': getattr(old_ip, 'max_pixels', getattr(model_args, 'image_max_pixels', None)), # full resolution
-            'use_multi_scale': getattr(model_args, 'use_multi_scale', True),
-            'scale_levels': getattr(model_args, 'scale_levels', 2),
-            'conf_thresh': getattr(model_args, 'conf_thresh', 0.5),
-            'scale_thresh': getattr(model_args, 'scale_thresh', 0.8),
-            'base_resolution': getattr(model_args, 'base_resolution', 224),
-            'high_res_scale': getattr(model_args, 'high_res_scale', 3.0),
-        }
-        
-        
-        ms_image_processor = MultiScaleImageProcessor(**kwargs)
-        
-        ## swap
-        setattr(processor, 'image_processor', ms_image_processor)
-        
-        # Set global image processor for visualization
-        from qwen2_5_vl.multiscale_processor_fast import set_global_image_processor
-        set_global_image_processor(ms_image_processor)
+    # SmartRes reads a low-resolution view and re-encodes part of the frame, so it needs
+    # both resolutions out of one image; the stock processor only emits one.
+    from smartres.qwen25vl import DualResolutionImageProcessor
+
+    old_ip = getattr(processor, "image_processor", None)
+    use_dual = getattr(model_args, "use_multi_scale", False)
+    setattr(processor, "use_multi_scale", use_dual)
+
+    if use_dual and not isinstance(old_ip, DualResolutionImageProcessor):
+        # r_LR / r_HR, the ratio between the two views' token budgets.
+        hr_scale = getattr(model_args, "high_res_scale", 0.2)
+        setattr(processor, "high_res_scale", hr_scale)
+        setattr(processor, "image_processor", DualResolutionImageProcessor(
+            patch_size=getattr(old_ip, "patch_size", 14),
+            temporal_patch_size=getattr(old_ip, "temporal_patch_size", 2),
+            merge_size=getattr(old_ip, "merge_size", 2),
+            min_pixels=getattr(old_ip, "min_pixels", None),
+            max_pixels=getattr(old_ip, "max_pixels", None),
+            hr_scale=hr_scale,
+        ))
+        logger.info_rank0(f"SmartRes dual-resolution image processor installed, r_LR/r_HR={hr_scale}")
 
 
 
@@ -227,128 +197,32 @@ def patch_config(
 
 
 def patch_qwen25vl_multiscale_vision(model: "PreTrainedModel", model_args: "ModelArguments") -> None:
+    """Install SmartRes: the router and vision forward, then the variable-length plumbing.
+
+    Runs before PEFT attaches the adapter so `modules_to_save=['visual.router']` resolves
+    onto the router installed here.
     """
-    Patch Qwen2.5-VL model with multi-scale vision processing capability
-    This now works at the image preprocessing level;
-    """
+    from smartres.qwen25vl import install_runtime, install_smartres
 
-    import os
+    tau = getattr(model_args, "conf_thresh", 0.5)
+    router_layer = getattr(model_args, "scale_layer", 30)
+    encode_snap = getattr(model_args, "encode_snap", "window")
+    lambda_route = getattr(model_args, "lambda_route", 1.0)
+    lambda_hinge = getattr(model_args, "lambda_hinge", 5.0)
 
-    # Token-order variant: "legacy" (default, byte-identical to the trained checkpoints)
-    # or "revised" (2026-07-23 window->native / raster-aligned fix, see
-    # custom_models/qwen2_5_vl/ms_forward_revised_window.py)
-    _token_order = os.environ.get("MTS_TOKEN_ORDER", "legacy").strip().lower()
-
-    if _token_order == "smartres":
-        # Drive the RELEASED smartres package instead of the in-tree forwards, so the
-        # release repo's code and its converted checkpoint (whose router lives at
-        # `visual.router`) are what actually gets evaluated. Installed before PEFT
-        # attaches the adapter, so `modules_to_save=['visual.router']` resolves.
-        from smartres import install_smartres
-
-        install_smartres(
-            model,
-            tau=getattr(model_args, "conf_thresh", 0.5),
-            router_layer=getattr(model_args, "scale_layer", 30),
-            encode_snap=os.environ.get("MTS_SPARSE_SNAP", "window"),
-            lambda_route=getattr(model_args, "lambda_route", 1.0),
-            lambda_hinge=getattr(model_args, "lambda_hinge", 5.0),
-        )
-        print(f"[INFO] SmartRes (released package) tau={getattr(model_args, 'conf_thresh', 0.5)} "
-              f"router_layer={getattr(model_args, 'scale_layer', 30)} "
-              f"encode_snap={os.environ.get('MTS_SPARSE_SNAP', 'window')} "
-              f"lambda_route={getattr(model_args, 'lambda_route', 1.0)} "
-              f"lambda_hinge={getattr(model_args, 'lambda_hinge', 5.0)}")
-        return
-
-    if _token_order in ("revised_dense_vec", "dense_vec", "v5"):
-        # Full HR encode (identical to `revised`) with the per-patch Python assembly loop
-        # replaced. Should be BIT-identical to `revised`, so no retraining is needed.
-        from qwen2_5_vl.ms_forward_revised_window_dense_vec import ms_forward
-    elif _token_order in ("revised_sparse_win", "sparse_win", "v6"):
-        # revised_sparse_vec with the encode set snapped up to whole 112px attention
-        # windows instead of 2x2 merge units, so the 28 window-attention blocks see the
-        # neighbourhood they were pretrained on. Same token sequence, closer features,
-        # ~78% of HR patches encoded instead of ~50%.
-        os.environ["MTS_SPARSE_SNAP"] = "window"
-        from qwen2_5_vl.ms_forward_revised_window_sparse_vec import ms_forward
-    elif _token_order in ("revised_sparse_vec", "sparse_vec", "v4"):
-        # Same output as revised_sparse, but the per-patch Python assembly loop (and its
-        # ~8.5k GPU->CPU syncs per image) is replaced by ownership + prefix-sum scatter.
-        from qwen2_5_vl.ms_forward_revised_window_sparse_vec import ms_forward
-    elif _token_order in ("revised_sparse", "sparse", "v3"):
-        # Encodes HR only where the router asked for it (real encoder speedup);
-        # NOT numerically equivalent to the dense variants -- needs its own training.
-        from qwen2_5_vl.ms_forward_revised_window_sparse import ms_forward
-    elif _token_order in ("revised", "native", "v2"):
-        from qwen2_5_vl.ms_forward_revised_window import ms_forward
-    else:
-        from qwen2_5_vl.modeling_qwen2_5_vl_fast import ms_forward
-    from qwen2_5_vl.multiscale_processor_fast import MultiScaleTokenProcessor
-
-    # Locate vision tower on model.visual 
-    visual = getattr(model, "visual", None)
-
-    use_teva = getattr(model_args, "teva_baseline", False)
-
-    # Init token processor (TEVA baseline or learned MTS router)
-    if getattr(visual, "token_multiscale_processor", None) is None:
-        vc = visual.config
-        if use_teva:
-            from teva_baseline.modeling_teva_baseline import TEVATokenProcessor
-            visual.token_multiscale_processor = TEVATokenProcessor(
-                patch_size=getattr(vc, "patch_size", 14),
-                temporal_patch_size=getattr(vc, "temporal_patch_size", 2),
-                merge_size=getattr(vc, "spatial_merge_size", 2),
-                embed_dim=getattr(vc, "hidden_size", 1280),
-                n_patches=256,
-                base_resolution=getattr(model_args, "base_resolution", 224),
-                high_res_scale=getattr(model_args, "high_res_scale", 2.0),
-            )
-            print("[INFO] Using TEVA baseline processor (bbox-based selection, no learned router)")
-        else:
-            visual.token_multiscale_processor = MultiScaleTokenProcessor(
-                patch_size=getattr(vc, "patch_size", 14),
-                temporal_patch_size=getattr(vc, "temporal_patch_size", 2),
-                merge_size=getattr(vc, "spatial_merge_size", 2),
-                embed_dim=getattr(vc, "hidden_size", 1280),
-                in_channels=getattr(vc, "in_channels", 3),
-                # get from model_args
-                scale_levels=getattr(model_args, "scale_levels", 2),
-                conf_thresh=getattr(model_args, "conf_thresh", 0.5),
-                scale_thresh=getattr(model_args, "scale_thresh", 0.8),
-                base_resolution=getattr(model_args, "base_resolution", 224),
-                high_res_scale=getattr(model_args, "high_res_scale", 2.0),
-                scale_layer=getattr(model_args, "scale_layer", 15), 
-            )
-        
-        # Store scale_layer for use in forward pass
-        scale_layer = getattr(model_args, "scale_layer", 15)
-        
-
-        # A monkey-patch that replaces visual.forward with _visual_forward.
-        def _visual_forward(self, x, grid_thw, *args, **kwargs):
-            # 保留原始forward接口, 从key word arguments读取 
-            # vis
-            frames_hr = kwargs.get('pixel_frames_hr', None)
-            hr_grid_thw = kwargs.get('hr_grid_thw', None)
-            # text
-            text_prompt = kwargs.get('text_prompt', None)
-            instruction = kwargs.get('instruction', None)
-
-            # multiscale forward
-            out = ms_forward(self, x, grid_thw, 
-                             frames_hr=frames_hr, 
-                             hr_grid_thw=hr_grid_thw, 
-                             text_prompt=text_prompt, 
-                             instruction=instruction,
-                             scale_layer=scale_layer)
-    
-            # 保持原始输出
-            return out
-
-        # 定义任何调用visual.forward(...)都通过这个wrapper
-        visual.forward = MethodType(_visual_forward, visual)
+    install_smartres(
+        model,
+        tau=tau,
+        router_layer=router_layer,
+        encode_snap=encode_snap,
+        lambda_route=lambda_route,
+        lambda_hinge=lambda_hinge,
+    )
+    install_runtime(model)
+    logger.info_rank0(
+        f"SmartRes installed: tau={tau} router_layer={router_layer} "
+        f"encode_snap={encode_snap} lambda_route={lambda_route} lambda_hinge={lambda_hinge}"
+    )
 
 
 def patch_model(

@@ -180,20 +180,16 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         import torch as _torch
         ip = getattr(self.processor, "image_processor", None)
         
-        # HR pixel frames for multi-scale processing
-        if hasattr(ip, "_last_processed_hr_frames") and ip._last_processed_hr_frames is not None:
-            pixel_frames_hr = np.stack(ip._last_processed_hr_frames, axis=0)
-            arr = np.ascontiguousarray(pixel_frames_hr)
-            mm_inputs["pixel_frames_hr"] = _torch.as_tensor(arr)
-            # remove
+        # Concatenated, not stacked: images in one batch have different patch counts, and
+        # hr_grid_thw is what splits the flat sequence back into frames.
+        if getattr(ip, "_last_processed_hr_frames", None) is not None:
+            frames = np.concatenate([np.asarray(f) for f in ip._last_processed_hr_frames], axis=0)
+            mm_inputs["pixel_frames_hr"] = _torch.as_tensor(np.ascontiguousarray(frames))
             ip._last_processed_hr_frames = None
-        
-        # HR grid dimensions
-        if hasattr(ip, "_last_processed_hr_grid_thw") and ip._last_processed_hr_grid_thw is not None:
-            hr_grid_thw = np.stack(ip._last_processed_hr_grid_thw, axis=0)
-            arr = np.ascontiguousarray(hr_grid_thw)
-            mm_inputs["hr_grid_thw"] = _torch.as_tensor(arr)
-            # remove
+
+        if getattr(ip, "_last_processed_hr_grid_thw", None) is not None:
+            grids = np.stack([np.asarray(g).reshape(3) for g in ip._last_processed_hr_grid_thw], axis=0)
+            mm_inputs["hr_grid_thw"] = _torch.as_tensor(np.ascontiguousarray(grids))
             ip._last_processed_hr_grid_thw = None
         
         # Bbox scale ratios no longer needed - bbox scaling is now handled by high_res_scale in processor

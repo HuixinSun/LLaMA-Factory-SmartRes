@@ -48,14 +48,6 @@ def _training_function(config: dict[str, Any]) -> None:
     callbacks: list[Any] = config.get("callbacks")
     # import pdb; pdb.set_trace()
     model_args, data_args, training_args, finetuning_args, generating_args = get_train_args(args)
-    
-    # TTO Integration - minimal import
-    import os
-    if os.getenv('TTO_ENABLED', 'false').lower() == 'true':
-        import sys
-        sys.path.append('/mnt/rdata4_6/huixin/LLaMA-Factory-main')
-    #         from tto.hooks.tto_hook import enable_tto
-    #         enable_tto()
 
     callbacks.append(LogCallback())
     if finetuning_args.pissa_convert:
