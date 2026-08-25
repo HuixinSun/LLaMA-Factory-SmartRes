@@ -522,7 +522,7 @@ def _create_muon_optimizer(
 def _is_selector_param(name: str) -> bool:
     """Check if parameter belongs to MTS selector modules."""
     selector_keywords = [
-        "token_multiscale_processor",  # Match any param under token_multiscale_processor
+        "visual.router",  # SmartRes router installed by smartres.qwen25vl
     ]
     return any(keyword in name for keyword in selector_keywords)
 
